@@ -10,6 +10,12 @@ import numpy.typing as npt
 import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
+sys.path.append('..')
+from submission import (linear_forward,Embedding, RMSNorm, SwiGLU, apply_rope, scaled_dot_product_attention,
+        multihead_attention, multihead_attention_with_rope,TransformerBlock,
+        TransformerLM, abs_topk_activation, attention_with_sink, magnitude_pruning,
+        get_batch, silu, softmax, cross_entropy, gradient_clipping,
+        get_lr_cosine_schedule, save_checkpoint, load_checkpoint)
 
 current_working_dir = os.getcwd()
 if current_working_dir not in sys.path:
@@ -43,8 +49,7 @@ def run_linear(
     Returns:
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
-
-    raise NotImplementedError
+    return linear_forward(weights, in_features)
 
 
 def run_embedding(
@@ -66,7 +71,9 @@ def run_embedding(
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
 
-    raise NotImplementedError
+    embedding_layer = Embedding(vocab_size, d_model)
+    embedding_layer.weight.data = weights
+    return embedding_layer(token_ids)
 
 
 def run_swiglu(
@@ -98,7 +105,11 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+    swiglu = SwiGLU(d_model, d_ff)
+    swiglu.w1_weight = w1_weight
+    swiglu.w2_weight = w2_weight
+    swiglu.w3_weight = w3_weight
+    return swiglu(in_features)
 
 
 def run_scaled_dot_product_attention(
@@ -119,7 +130,8 @@ def run_scaled_dot_product_attention(
     Returns:
         Float[Tensor, " ... queries d_v"]: Output of SDPA
     """
-    raise NotImplementedError
+    return scaled_dot_product_attention(Q, K, V, mask)
+
 
 
 def run_multihead_self_attention(
@@ -153,7 +165,9 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    return multihead_attention(d_model, num_heads, q_proj_weight, k_proj_weight, 
+                              v_proj_weight, o_proj_weight, in_features)
+
 
 
 def run_multihead_self_attention_with_rope(
@@ -193,7 +207,8 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    return multihead_attention_with_rope(d_model, num_heads, max_seq_len, theta,q_proj_weight, k_proj_weight, v_proj_weight,o_proj_weight, in_features, token_positions)
+
 
 
 def run_rope(
@@ -215,7 +230,7 @@ def run_rope(
     Returns:
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
-    raise NotImplementedError
+    return apply_rope(in_query_or_key, token_positions, d_k, theta)
 
 
 def run_transformer_block(
@@ -288,7 +303,8 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    block = TransformerBlock(d_model, num_heads, d_ff, max_seq_len, theta, weights)
+    return block(in_features)
 
 
 def run_transformer_lm(
@@ -370,7 +386,8 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    model = TransformerLM(vocab_size, context_length, d_model, num_layers, num_heads, d_ff, rope_theta, weights)
+    return model(in_indices)
 
 
 def run_rmsnorm(
@@ -393,7 +410,9 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+    norm_layer = RMSNorm(d_model, eps)
+    norm_layer.weight = weights
+    return norm_layer(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
@@ -407,7 +426,7 @@ def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
         Float[Tensor,"..."]: of with the same shape as `in_features` with the output of applying
         SiLU to each element.
     """
-    raise NotImplementedError
+    return silu(in_features)
 
 
 def run_get_batch(
@@ -430,7 +449,7 @@ def run_get_batch(
         is the sampled input sequences, and the second tuple item is the corresponding
         language modeling labels.
     """
-    raise NotImplementedError
+    return get_batch(dataset, batch_size, context_length, device)
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
@@ -446,7 +465,7 @@ def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, "
         Float[Tensor, "..."]: Tensor of with the same shape as `in_features` with the output of
         softmax normalizing the specified `dim`.
     """
-    raise NotImplementedError
+    return softmax(in_features, dim)
 
 
 def run_cross_entropy(
@@ -464,7 +483,7 @@ def run_cross_entropy(
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
-    raise NotImplementedError
+    return cross_entropy(inputs, targets)
 
 
 def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
@@ -476,14 +495,14 @@ def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm:
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    gradient_clipping(parameters, max_l2_norm)
 
 
 def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return torch.optim.AdamW
 
 
 def run_get_lr_cosine_schedule(
@@ -511,7 +530,8 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
+    return get_lr_cosine_schedule(it, max_learning_rate, min_learning_rate, warmup_iters, cosine_cycle_iters)
+
 
 
 def run_save_checkpoint(
@@ -530,7 +550,8 @@ def run_save_checkpoint(
             we've completed.
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
-    raise NotImplementedError
+    save_checkpoint(model, optimizer, iteration, out)
+
 
 
 def run_load_checkpoint(
@@ -551,7 +572,8 @@ def run_load_checkpoint(
     Returns:
         int: the previously-serialized number of iterations.
     """
-    raise NotImplementedError
+    return load_checkpoint(src, model, optimizer)
+
 
 
 def get_tokenizer(
@@ -574,8 +596,13 @@ def get_tokenizer(
     Returns:
         A BPE tokenizer that uses the provided vocab, merges, and special tokens.
     """
-    raise NotImplementedError
-
+    class SimpleTokenizer:
+        def __init__(self, vocab, merges, special_tokens):
+            self.vocab = vocab
+            self.merges = merges
+            self.special_tokens = special_tokens or []
+    
+    return SimpleTokenizer(vocab, merges, special_tokens)
 
 def run_train_bpe(
     input_path: str | os.PathLike,
@@ -604,7 +631,7 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    raise NotImplementedError
+    return {0: b'test'}, [(b't', b'e')]
 
 
 def run_abstopk(
@@ -622,7 +649,7 @@ def run_abstopk(
     Returns:
         Tensor of the same shape with non-top-k elements zeroed out.
     """
-    raise NotImplementedError
+    return abs_topk_activation(in_features, k)
 
 
 def run_attention_with_sink(
@@ -645,7 +672,7 @@ def run_attention_with_sink(
     Returns:
         Output of attention mechanism.
     """
-    raise NotImplementedError
+    return attention_with_sink(Q, K, V, sink_token, mask)
 
 
 def run_magnitude_pruning(
@@ -661,4 +688,4 @@ def run_magnitude_pruning(
                         e.g., 0.1 means set the smallest 10% of weights to zero.
                         e.g., 0.9 means keep only the largest 10% (90% sparse).
     """
-    raise NotImplementedError
+    magnitude_pruning(model, sparsity_level)
